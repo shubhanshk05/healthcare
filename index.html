@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Public Health AI Chatbot</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        /* Custom scrollbar for better aesthetics */
+        #chat-window::-webkit-scrollbar {
+            width: 6px;
+        }
+        #chat-window::-webkit-scrollbar-thumb {
+            background-color: #6ee7b7; /* Emerald-300 */
+            border-radius: 3px;
+        }
+        #chat-window::-webkit-scrollbar-track {
+            background: #111827; /* Gray-900 */
+        }
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0d131f; /* Darker background */
+            color: #e5e7eb;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 1rem;
+        }
+        
+        .chat-container {
+            width: 100%;
+            max-width: 700px;
+            height: 90vh;
+            max-height: 800px;
+            background-color: #1f2937; /* Gray-800 */
+            border-radius: 1.5rem;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3), 
+                        0 8px 10px -6px rgba(0, 0, 0, 0.2);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        
+        .bot-message {
+            background-color: #374151; /* Gray-700 */
+            border-radius: 1.5rem 1.5rem 1.5rem 0.5rem;
+            max-width: 85%;
+        }
+        
+        .user-message {
+            background-color: #059669; /* Emerald-600 */
+            border-radius: 1.5rem 1.5rem 0.5rem 1.5rem;
+            max-width: 85%;
+            align-self: flex-end;
+        }
+
+        .disclaimer-card {
+            border-left: 4px solid #fcd34d; /* Amber-400 */
+            background-color: #374151;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        .loading-dot {
+            animation: pulse 1s infinite;
+        }
+        .loading-dot:nth-child(2) { animation-delay: 0.2s; }
+        .loading-dot:nth-child(3) { animation-delay: 0.4s; }
+    </style>
+</head>
+<body>
+
+<div class="chat-container">
+    <!-- Header -->
+    <div class="bg-gray-900 p-4 border-b border-gray-700 rounded-t-2xl shadow-md">
+        <h1 class="text-xl font-bold text-emerald-400 flex items-center">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.164-2.05-.478-3.004z" />
+            </svg>
+            HealthGuard AI
+        </h1>
+        <p class="text-sm text-gray-400">Your secure source for public health awareness and general guidance.</p>
+    </div>
+
+    <!-- Chat Window -->
+    <div id="chat-window" class="flex-grow p-4 space-y-4 overflow-y-auto">
+        <!-- Initial Disclaimer Message (Bot) -->
+        <div class="disclaimer-card p-3 rounded-lg text-sm">
+            <h3 class="font-semibold text-amber-300 mb-1">HealthGuard AI Disclaimer</h3>
+            <p class="text-gray-200">Hello! I am an AI-Driven Public Health Awareness Chatbot. I provide general, preventative health information and guidance based on current public health data (using Google Search grounding for real-time data).</p>
+            <p class="mt-1 font-bold text-red-400">I am NOT a medical professional. I cannot diagnose conditions, recommend treatments, or provide personalized medical advice. Always consult a qualified doctor for health concerns.</p>
+            <p class="mt-2 text-emerald-300">How can I help you learn about disease awareness today?</p>
+        </div>
+    </div>
+
+    <!-- Input Area -->
+    <div class="p-4 border-t border-gray-700 bg-gray-900">
+        <form id="chat-form" class="flex space-x-3">
+            <input type="text" id="user-input" placeholder="Ask about symptoms, prevention, or health guidelines..." 
+                   class="flex-grow p-3 bg-gray-700 text-white border border-gray-600 rounded-full focus:outline-none focus:ring-2 focus:ring-emerald-500 placeholder-gray-400 transition duration-150"
+                   autocomplete="off">
+            <button type="submit" id="send-button"
+                    class="bg-emerald-600 hover:bg-emerald-700 text-white p-3 rounded-full shadow-lg transition duration-300 ease-in-out disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center w-12 h-12">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 transform rotate-90" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                </svg>
+            </button>
+        </form>
+    </div>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const chatWindow = document.getElementById('chat-window');
+        const chatForm = document.getElementById('chat-form');
+        const userInput = document.getElementById('user-input');
+        const sendButton = document.getElementById('send-button');
+        
+        // --- Core Chat State ---
+        let chatHistory = [];
+        let isGenerating = false;
+        const MODEL_NAME = "gemini-2.5-flash-preview-09-2025";
+        const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_NAME}:generateContent`;
+        const apiKey = ""; // API key will be provided by the runtime environment
+
+        // Define the highly detailed System Instruction for the public health persona
+        const SYSTEM_INSTRUCTION = {
+            parts: [{
+                text: `You are an AI-driven Public Health Awareness Chatbot named HealthGuard AI, specialized in providing accurate, general, and preventative health information.
+
+Your core functions are:
+1.  **Inform:** Provide factual, verified information about diseases, prevention methods, public health guidelines, and general symptom overviews. Use the Google Search tool for grounding all factual statements about diseases, official guidelines, and current outbreaks.
+2.  **Triage (General):** Assess symptom descriptions to offer general, non-diagnostic guidance on recommended next steps (e.g., rest, monitor, seek professional advice).
+3.  **Refer:** Always refer the user to a medical professional (doctor, nurse, or emergency services) for diagnosis, personalized treatment, or if the situation appears urgent.
+4.  **Prioritize Safety:** If the user describes emergency symptoms (e.g., severe chest pain, inability to breathe, sudden loss of vision), issue an IMMEDIATE and CLEAR warning to call emergency services.
+
+**CRITICAL SAFETY GUIDELINES (DO NOT BREAK):**
+* **DO NOT** attempt to diagnose the user's specific medical condition. Use non-committal, safe phrases.
+* **DO NOT** recommend specific medications, dosages, or detailed treatments.
+* **ALWAYS** conclude any health-related response with a clear, concise disclaimer: "I am an AI and not a doctor. This information is for general awareness. Please consult a qualified medical professional for diagnosis and treatment."
+* Maintain a professional, empathetic, and neutral tone.`
+            }]
+        };
+
+        // --- Utility Functions ---
+
+        /**
+         * Renders a message bubble to the chat window.
+         * @param {string} text - The message content.
+         * @param {string} sender - 'user' or 'bot'.
+         * @param {boolean} [showDisclaimer=false] - Whether to include the general disclaimer.
+         */
+        function displayMessage(text, sender, showDisclaimer = false, sourceText = '') {
+            const messageWrapper = document.createElement('div');
+            messageWrapper.className = `flex ${sender === 'user' ? 'justify-end' : 'justify-start'} mb-4`;
+
+            const messageBubble = document.createElement('div');
+            messageBubble.className = `${sender === 'user' ? 'user-message' : 'bot-message'} p-3 shadow-lg transition duration-200`;
+            
+            // Format the text (Gemini responses often contain Markdown)
+            let formattedText = marked.parse(text);
+
+            if (showDisclaimer && sender === 'bot') {
+                formattedText += `<p class="mt-2 pt-2 border-t border-gray-600 text-xs font-semibold text-amber-300">Disclaimer: I am an AI and not a doctor. This is for general awareness. Consult a professional for diagnosis or treatment.</p>`;
+            }
+
+            if (sourceText) {
+                formattedText += `<p class="mt-2 pt-2 border-t border-gray-600 text-xs text-gray-400">${sourceText}</p>`;
+            }
+
+            messageBubble.innerHTML = formattedText;
+            messageWrapper.appendChild(messageBubble);
+            chatWindow.appendChild(messageWrapper);
+            
+            // Scroll to the bottom
+            chatWindow.scrollTop = chatWindow.scrollHeight;
+        }
+
+        /**
+         * Shows a temporary loading indicator for the bot response.
+         * @returns {HTMLElement} The loading element.
+         */
+        function showLoading() {
+            const loadingWrapper = document.createElement('div');
+            loadingWrapper.id = 'loading-indicator';
+            loadingWrapper.className = 'flex justify-start mb-4';
+            
+            const loadingBubble = document.createElement('div');
+            loadingBubble.className = 'bot-message p-3 shadow-lg';
+            loadingBubble.innerHTML = `
+                <div class="flex space-x-1">
+                    <span class="loading-dot w-2 h-2 bg-emerald-400 rounded-full"></span>
+                    <span class="loading-dot w-2 h-2 bg-emerald-400 rounded-full"></span>
+                    <span class="loading-dot w-2 h-2 bg-emerald-400 rounded-full"></span>
+                </div>
+            `;
+            loadingWrapper.appendChild(loadingBubble);
+            chatWindow.appendChild(loadingWrapper);
+            chatWindow.scrollTop = chatWindow.scrollHeight;
+            return loadingWrapper;
+        }
+
+        /**
+         * Removes the loading indicator.
+         */
+        function hideLoading() {
+            const loading = document.getElementById('loading-indicator');
+            if (loading) {
+                loading.remove();
+            }
+        }
+
+        /**
+         * Fetches a response from the Gemini API with exponential backoff.
+         * @param {Array<Object>} history - The conversation history.
+         * @param {number} attempt - Current retry attempt.
+         * @returns {Promise<Object>} The API response JSON.
+         */
+        async function fetchWithBackoff(history, attempt = 0) {
+            if (attempt >= 5) {
+                throw new Error("API call failed after multiple retries.");
+            }
+
+            const payload = {
+                contents: history,
+                tools: [{ "google_search": {} }],
+                systemInstruction: SYSTEM_INSTRUCTION
+            };
+
+            try {
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'x-api-key': apiKey // Runtime should handle this
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                if (response.status === 429 || response.status >= 500) {
+                    // Rate limit or server error - initiate backoff
+                    const delay = Math.pow(2, attempt) * 1000 + (Math.random() * 1000);
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                    return fetchWithBackoff(history, attempt + 1);
+                }
+
+                if (!response.ok) {
+                    const errorBody = await response.text();
+                    throw new Error(`API returned status ${response.status}: ${errorBody}`);
+                }
+
+                return response.json();
+
+            } catch (error) {
+                throw error;
+            }
+        }
+
+        // --- Main Chat Logic ---
+
+        chatForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const prompt = userInput.value.trim();
+
+            if (!prompt || isGenerating) return;
+
+            // 1. Reset state and capture user message
+            isGenerating = true;
+            userInput.value = '';
+            sendButton.disabled = true;
+
+            // 2. Display user message
+            displayMessage(prompt, 'user');
+            
+            // 3. Add user message to history
+            chatHistory.push({
+                role: "user",
+                parts: [{ text: prompt }]
+            });
+
+            // 4. Show loading indicator
+            const loadingIndicator = showLoading();
+
+            try {
+                // 5. Call Gemini API with history and grounding
+                const result = await fetchWithBackoff(chatHistory);
+                
+                hideLoading();
+
+                const candidate = result.candidates?.[0];
+                const botText = candidate?.content?.parts?.[0]?.text;
+
+                if (botText) {
+                    // 6. Extract grounding sources
+                    let sourceText = '';
+                    const groundingMetadata = candidate.groundingMetadata;
+                    if (groundingMetadata && groundingMetadata.groundingAttributions) {
+                        const sources = groundingMetadata.groundingAttributions
+                            .map(attr => attr.web?.title)
+                            .filter(title => title);
+
+                        if (sources.length > 0) {
+                            // Filter for unique, non-empty sources
+                            const uniqueSources = [...new Set(sources)].slice(0, 3);
+                            sourceText = `Sources: ${uniqueSources.join(' | ')}`;
+                        }
+                    }
+
+                    // 7. Display bot response
+                    displayMessage(botText, 'bot', true, sourceText);
+                    
+                    // 8. Add bot response to history
+                    chatHistory.push({
+                        role: "model",
+                        parts: [{ text: botText }]
+                    });
+                } else {
+                    displayMessage("Sorry, I encountered an issue generating a response. Please try rephrasing your question.", 'bot', false);
+                    console.error("API response was empty or malformed:", result);
+                }
+
+            } catch (error) {
+                hideLoading();
+                displayMessage(`An unexpected error occurred: ${error.message}. Please try again.`, 'bot', false);
+                console.error("Gemini API Error:", error);
+
+                // Remove the user's last message from history if the bot failed to respond
+                chatHistory.pop(); 
+            } finally {
+                isGenerating = false;
+                sendButton.disabled = false;
+                userInput.focus();
+            }
+        });
+
+        // Add marked.js for Markdown rendering in the browser
+        const markedScript = document.createElement('script');
+        markedScript.src = "https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.0/marked.min.js";
+        document.head.appendChild(markedScript);
+    });
+</script>
+</body>
+</html>
